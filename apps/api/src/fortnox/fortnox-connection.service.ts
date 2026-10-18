@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
-import { Prisma } from '@prisma/client'
+import { Prisma, type FortnoxConnection } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -72,6 +72,95 @@ export class FortnoxNotConnectedError extends Error {
     super(`Fortnox: ${reason}`)
     this.name = 'FortnoxNotConnectedError'
   }
+}
+
+export type FortnoxCredentialBinding = Readonly<{
+  organizationId: string
+  connectionId: string
+  connectionGeneration: number
+  fortnoxDatabaseNumber: number
+  fortnoxOrgNumber: string | null
+}>
+
+export type FortnoxBoundCredential = Readonly<{
+  token: string
+  tokenVersion: number
+  binding: FortnoxCredentialBinding
+}>
+
+export class FortnoxCredentialBindingError extends Error {
+  constructor() {
+    super('Fortnox-anslutningen matchar inte det frysta underlaget')
+    this.name = 'FortnoxCredentialBindingError'
+  }
+}
+
+type CredentialBindingRow = Pick<
+  FortnoxConnection,
+  'organizationId' | 'id' | 'generation' | 'fortnoxDatabaseNumber' | 'fortnoxOrgNumber'
+>
+
+function copyCredentialBinding(expected: FortnoxCredentialBinding): FortnoxCredentialBinding {
+  if (!expected || typeof expected !== 'object' || Array.isArray(expected)) {
+    throw new FortnoxCredentialBindingError()
+  }
+  const binding = Object.freeze({
+    organizationId: expected.organizationId,
+    connectionId: expected.connectionId,
+    connectionGeneration: expected.connectionGeneration,
+    fortnoxDatabaseNumber: expected.fortnoxDatabaseNumber,
+    fortnoxOrgNumber: expected.fortnoxOrgNumber,
+  })
+  if (
+    typeof binding.organizationId !== 'string' ||
+    binding.organizationId.length === 0 ||
+    typeof binding.connectionId !== 'string' ||
+    binding.connectionId.length === 0 ||
+    !Number.isSafeInteger(binding.connectionGeneration) ||
+    binding.connectionGeneration < 0 ||
+    !Number.isSafeInteger(binding.fortnoxDatabaseNumber) ||
+    binding.fortnoxDatabaseNumber <= 0 ||
+    (binding.fortnoxOrgNumber !== null && typeof binding.fortnoxOrgNumber !== 'string')
+  ) {
+    throw new FortnoxCredentialBindingError()
+  }
+  return binding
+}
+
+function bindingFromConnection(row: CredentialBindingRow): FortnoxCredentialBinding {
+  return Object.freeze({
+    organizationId: row.organizationId,
+    connectionId: row.id,
+    connectionGeneration: row.generation,
+    fortnoxDatabaseNumber: row.fortnoxDatabaseNumber,
+    fortnoxOrgNumber: row.fortnoxOrgNumber,
+  })
+}
+
+function assertCredentialBinding(row: CredentialBindingRow, expected: FortnoxCredentialBinding) {
+  if (
+    row.organizationId !== expected.organizationId ||
+    row.id !== expected.connectionId ||
+    row.generation !== expected.connectionGeneration ||
+    row.fortnoxDatabaseNumber !== expected.fortnoxDatabaseNumber ||
+    row.fortnoxOrgNumber !== expected.fortnoxOrgNumber
+  ) {
+    throw new FortnoxCredentialBindingError()
+  }
+}
+
+function credentialBindingWhere(
+  expected?: FortnoxCredentialBinding,
+): Prisma.FortnoxConnectionWhereInput {
+  return expected
+    ? {
+        organizationId: expected.organizationId,
+        id: expected.connectionId,
+        generation: expected.connectionGeneration,
+        fortnoxDatabaseNumber: expected.fortnoxDatabaseNumber,
+        fortnoxOrgNumber: expected.fortnoxOrgNumber,
+      }
+    : {}
 }
 
 interface CompanyInformation {
@@ -321,7 +410,27 @@ export class FortnoxConnectionService {
   }> {
     const out = await this.accessTokenFromStore(organizationId, opts)
     this.rateIdentity?.bind(out.token, out.databaseNumber)
-    return out
+    return {
+      token: out.token,
+      connectionId: out.connectionId,
+      databaseNumber: out.databaseNumber,
+      tokenVersion: out.tokenVersion,
+    }
+  }
+
+  /** Intern credential för ett fryst underlag; aktiverar ingen läsare eller worker. */
+  async boundAccessToken(
+    expected: FortnoxCredentialBinding,
+    opts: { afterUnauthorizedVersion?: number } = {},
+  ): Promise<FortnoxBoundCredential> {
+    const binding = copyCredentialBinding(expected)
+    const afterUnauthorizedVersion = opts.afterUnauthorizedVersion
+    const options = Object.freeze(
+      afterUnauthorizedVersion === undefined ? {} : { afterUnauthorizedVersion },
+    )
+    const out = await this.accessTokenFromStore(binding.organizationId, options, binding)
+    this.rateIdentity?.bind(out.token, out.binding.fortnoxDatabaseNumber)
+    return Object.freeze({ token: out.token, tokenVersion: out.tokenVersion, binding: out.binding })
   }
 
   // ── Access-token för ett anrop ──────────────────────────────────────────────
@@ -338,16 +447,24 @@ export class FortnoxConnectionService {
        */
       afterUnauthorizedVersion?: number
     } = {},
+    expected?: FortnoxCredentialBinding,
   ): Promise<{
     token: string
     connectionId: string
     databaseNumber: number
     tokenVersion: number
+    binding: FortnoxCredentialBinding
   }> {
+    const boundWhere = credentialBindingWhere(expected)
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn) throw new FortnoxNotConnectedError('NO_CONNECTION')
+    if (expected) assertCredentialBinding(conn, expected)
     if (conn.status !== 'ACTIVE') throw new FortnoxNotConnectedError(conn.status)
-    const ids = { connectionId: conn.id, databaseNumber: conn.fortnoxDatabaseNumber }
+    const ids = {
+      connectionId: conn.id,
+      databaseNumber: conn.fortnoxDatabaseNumber,
+      binding: bindingFromConnection(conn),
+    }
     const now = Date.now()
     const forced = opts.afterUnauthorizedVersion !== undefined
     if (forced && conn.tokenVersion !== opts.afterUnauthorizedVersion) {
@@ -379,17 +496,24 @@ export class FortnoxConnectionService {
         tokenVersion: conn.tokenVersion,
         refreshAttemptId: null,
         OR: [{ refreshLeaseUntil: null }, { refreshLeaseUntil: { lt: new Date(now) } }],
+        ...boundWhere,
+        organizationId,
       },
       data: { refreshLeaseUntil: new Date(now + REFRESH_LEASE_MS), refreshAttemptId: attemptId },
     })
     if (lease.count !== 1) {
       const fresh = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
+      if (expected) {
+        if (!fresh) throw new FortnoxNotConnectedError('NO_CONNECTION')
+        assertCredentialBinding(fresh, expected)
+      }
       if (fresh && fresh.status === 'ACTIVE' && fresh.tokenVersion !== conn.tokenVersion) {
         return {
           token: this.crypto.decrypt(fresh.accessTokenEnc),
           connectionId: fresh.id,
           databaseNumber: fresh.fortnoxDatabaseNumber,
           tokenVersion: fresh.tokenVersion,
+          binding: bindingFromConnection(fresh),
         }
       }
       if (fresh && fresh.status !== 'ACTIVE') throw new FortnoxNotConnectedError(fresh.status)
@@ -401,11 +525,16 @@ export class FortnoxConnectionService {
         fresh.refreshLeaseUntil &&
         fresh.refreshLeaseUntil.getTime() < now
       ) {
-        await this.markAuthLost(organizationId, 'REFRESH_OUTCOME_UNKNOWN', {
-          connectionId: fresh.id,
-          tokenVersion: fresh.tokenVersion,
-          refreshAttemptId: fresh.refreshAttemptId,
-        })
+        await this.markAuthLostFromStore(
+          organizationId,
+          'REFRESH_OUTCOME_UNKNOWN',
+          {
+            connectionId: fresh.id,
+            tokenVersion: fresh.tokenVersion,
+            refreshAttemptId: fresh.refreshAttemptId,
+          },
+          expected,
+        )
         throw new FortnoxNotConnectedError('AUTH_LOST')
       }
       if (fresh?.lastErrorClass === 'REFRESH_RATE_LIMITED') {
@@ -431,6 +560,7 @@ export class FortnoxConnectionService {
             id: conn.id,
             tokenVersion: conn.tokenVersion,
             refreshAttemptId: attemptId,
+            ...boundWhere,
           },
           data: {
             refreshAttemptId: null,
@@ -448,6 +578,7 @@ export class FortnoxConnectionService {
             id: conn.id,
             tokenVersion: conn.tokenVersion,
             refreshAttemptId: attemptId,
+            ...boundWhere,
           },
           data: {
             refreshAttemptId: null,
@@ -461,7 +592,7 @@ export class FortnoxConnectionService {
       // Avvisad ELLER okänt utfall: refresh-token kan vara förbrukad (rotation).
       // C-F02: stoppet gäller BARA den anslutning/version/det försök som ägde anropet.
       const unknown = err instanceof FortnoxAuthError && err.kind === 'unknown'
-      await this.markAuthLost(
+      await this.markAuthLostFromStore(
         organizationId,
         unknown ? 'REFRESH_OUTCOME_UNKNOWN' : 'AUTH_REJECTED',
         {
@@ -469,6 +600,7 @@ export class FortnoxConnectionService {
           tokenVersion: conn.tokenVersion,
           refreshAttemptId: attemptId,
         },
+        expected,
       )
       throw new FortnoxNotConnectedError('AUTH_LOST')
     }
@@ -479,6 +611,7 @@ export class FortnoxConnectionService {
         tokenVersion: conn.tokenVersion,
         refreshAttemptId: attemptId,
         status: 'ACTIVE',
+        ...boundWhere,
       },
       data: {
         accessTokenEnc: this.crypto.encrypt(tokens.accessToken),
@@ -491,6 +624,24 @@ export class FortnoxConnectionService {
     })
     // Anslutningen kopplades från/ersattes under förnyelsen: använd inte token.
     if (saved.count !== 1) throw new FortnoxNotConnectedError('DISCONNECTED')
+    if (expected) {
+      // Läs hela credential från samma slutrad, även om en legitim ny förnyelse hunnit före.
+      // Detta binder svaret, inte ett senare provideranrop efter denna läsning.
+      const fresh = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
+      if (!fresh) throw new FortnoxNotConnectedError('NO_CONNECTION')
+      assertCredentialBinding(fresh, expected)
+      if (fresh.status !== 'ACTIVE') throw new FortnoxNotConnectedError(fresh.status)
+      if (fresh.tokenVersion < conn.tokenVersion + 1) {
+        throw new FortnoxNotConnectedError('DISCONNECTED')
+      }
+      return {
+        token: this.crypto.decrypt(fresh.accessTokenEnc),
+        connectionId: fresh.id,
+        databaseNumber: fresh.fortnoxDatabaseNumber,
+        tokenVersion: fresh.tokenVersion,
+        binding: bindingFromConnection(fresh),
+      }
+    }
     return { token: tokens.accessToken, ...ids, tokenVersion: conn.tokenVersion + 1 }
   }
 
@@ -588,6 +739,15 @@ export class FortnoxConnectionService {
     errorClass: string,
     expect: { connectionId: string; tokenVersion: number; refreshAttemptId?: string },
   ): Promise<void> {
+    await this.markAuthLostFromStore(organizationId, errorClass, expect)
+  }
+
+  private async markAuthLostFromStore(
+    organizationId: string,
+    errorClass: string,
+    expect: { connectionId: string; tokenVersion: number; refreshAttemptId?: string },
+    binding?: FortnoxCredentialBinding,
+  ): Promise<void> {
     await this.prisma.fortnoxConnection.updateMany({
       where: {
         organizationId,
@@ -595,6 +755,7 @@ export class FortnoxConnectionService {
         id: expect.connectionId,
         tokenVersion: expect.tokenVersion,
         ...(expect.refreshAttemptId ? { refreshAttemptId: expect.refreshAttemptId } : {}),
+        ...credentialBindingWhere(binding),
       },
       data: {
         status: 'AUTH_LOST',
