@@ -203,6 +203,7 @@ export function MaintenancePage() {
   const sheetRef = useFocusTrap<HTMLDivElement>(showSheet)
   const headerButtonRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const focusHeaderAfterSubmit = useRef(false)
 
   useEffect(() => {
@@ -456,9 +457,26 @@ export function MaintenancePage() {
               <p style={{ fontSize: '13px', color: 'var(--ev-neutral-500)', marginBottom: '8px' }}>
                 Bilder (valfritt, max 5)
               </p>
-              <label
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []).slice(0, 5)
+                  draftVersion.current += 1
+                  setImages(files)
+                }}
+              />
+              <button
+                type="button"
+                tabIndex={0}
+                className={styles.imagePicker}
+                onClick={() => imageInputRef.current?.click()}
                 style={{
                   display: 'block',
+                  width: '100%',
                   border: '1.5px dashed #ccc',
                   borderRadius: '12px',
                   padding: '16px',
@@ -466,21 +484,12 @@ export function MaintenancePage() {
                   cursor: 'pointer',
                   color: 'var(--ev-neutral-500)',
                   fontSize: '13px',
+                  fontFamily: 'inherit',
+                  lineHeight: 'inherit',
                 }}
               >
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []).slice(0, 5)
-                    draftVersion.current += 1
-                    setImages(files)
-                  }}
-                />
                 {images.length > 0 ? `${images.length} bild(er) valda` : '+ Lägg till bilder'}
-              </label>
+              </button>
               {images.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   {images.map((img, i) => (
