@@ -2,7 +2,7 @@ import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { formatSwedishDate, rentNoticeDisplayStatus } from '@eken/shared'
+import { formatCurrency, formatSwedishDate, rentNoticeDisplayStatus } from '@eken/shared'
 import {
   fetchInvoices,
   fetchRentNotices,
@@ -31,15 +31,6 @@ export function aviTypText(type: string | undefined): string {
   return (type && AVI_TYP_TEXT[type]) || 'Avi'
 }
 const PAID_NOTICE_STATUSES = new Set(['PAID'])
-
-function formatCurrencySv(amount: number): string {
-  return new Intl.NumberFormat('sv-SE', {
-    style: 'currency',
-    currency: 'SEK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
 
 function formatDateSv(dateStr: string): string {
   return new Intl.DateTimeFormat('sv-SE', {
@@ -303,16 +294,15 @@ function RentNoticesList({
             {/* Beloppet är RESTSKULDEN (payableTotal) — märkt som det, så att 0 kr på en betald
                 avi inte läses som avins belopp. Avins belopp visas bara med egen etikett. */}
             <p className={styles.cardAmountLabel}>Kvar att betala</p>
-            <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
+            <p className={styles.cardAmount}>{formatCurrency(notice.payableTotal)}</p>
             {notice.payableTotal === 0 && notice.nominalTotal > 0 && (
               <p className={styles.cardAmountSub}>
-                Avins belopp {formatCurrencySv(notice.nominalTotal)}
+                Avins belopp {formatCurrency(notice.nominalTotal)}
               </p>
             )}
             {notice.paid > 0 && notice.paid !== notice.nominalTotal && (
               <p className={styles.cardAmountSub}>
-                Kvar av {formatCurrencySv(notice.nominalTotal)} — {formatCurrencySv(notice.paid)}{' '}
-                betalt
+                Kvar av {formatCurrency(notice.nominalTotal)} — {formatCurrency(notice.paid)} betalt
               </p>
             )}
 
@@ -412,10 +402,10 @@ function InvoicesList({
                 `outstanding` identisk med `total`, så vyn är oförändrad för det
                 vanliga fallet. Är något betalt tillkommer en rad som SÄGER vad
                 talet är — etiketten var precis det som var fel i #341. */}
-            <p className={styles.cardAmount}>{formatCurrencySv(invoice.outstanding)}</p>
+            <p className={styles.cardAmount}>{formatCurrency(invoice.outstanding)}</p>
             {invoice.paid > 0 && (
               <p className={styles.cardAmountSub}>
-                Kvar av {formatCurrencySv(invoice.total)} — {formatCurrencySv(invoice.paid)} betalt
+                Kvar av {formatCurrency(invoice.total)} — {formatCurrency(invoice.paid)} betalt
               </p>
             )}
 
@@ -479,7 +469,7 @@ function MiscChargesList({ query }: { query: ReturnType<typeof useQuery<PortalMi
             <p className={styles.cardMonth}>{charge.description}</p>
           </div>
 
-          <p className={styles.cardAmount}>{formatCurrencySv(charge.totalAmount)}</p>
+          <p className={styles.cardAmount}>{formatCurrency(charge.totalAmount)}</p>
 
           <div className={styles.cardDueRow}>
             <span className={styles.cardDueLabel}>Debiterad</span>

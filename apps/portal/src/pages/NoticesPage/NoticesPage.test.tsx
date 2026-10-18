@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NoticesPage } from './NoticesPage'
@@ -329,5 +329,216 @@ describe('avins typ och restskuldens etikett', () => {
     expect(screen.queryByText('Hyresavi')).toBeNull()
     expect(screen.queryByText('Deposition')).toBeNull()
     expect(screen.getByText('Avi')).toBeTruthy()
+  })
+})
+
+/** Oberoende beloppsfacit: riktig sida/formatterare, bara befintlig API-gräns mockas. */
+describe('öresprecision i betalningskort och debiteringar', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] }).setSystemTime(new Date('2026-09-21T12:00:00Z'))
+    api.downloadRentNoticePdf.mockResolvedValue(undefined)
+    api.downloadInvoicePdf.mockResolvedValue(undefined)
+  })
+
+  function kortMed(ankare: string) {
+    // OCR/fakturanummer respektive debiteringsbeskrivning sitter två nivåer in i kortet.
+    // Facit begränsas till just det kortet, inte en matchande summa någon annanstans i vyn.
+    const kort = screen.getByText(ankare, { exact: true }).parentElement?.parentElement
+    if (!kort) throw new Error(`Kort saknas för ${ankare}`)
+    return within(kort)
+  }
+
+  it.each([
+    {
+      rest: 0.29,
+      nominellt: 100,
+      betalt: 99.71,
+      belopp: '0,29 kr',
+      förklaring: 'Kvar av 100 kr — 99,71 kr betalt',
+    },
+    {
+      rest: 0.01,
+      nominellt: 100,
+      betalt: 99.99,
+      belopp: '0,01 kr',
+      förklaring: 'Kvar av 100 kr — 99,99 kr betalt',
+    },
+    {
+      rest: 1234.56,
+      nominellt: 1334.27,
+      betalt: 99.71,
+      belopp: '1 234,56 kr',
+      förklaring: 'Kvar av 1 334,27 kr — 99,71 kr betalt',
+    },
+  ])(
+    'visar rest $rest exakt i både avi och faktura, med rätt filter och PDF-ID',
+    async ({ rest, nominellt, betalt, belopp, förklaring }) => {
+      const avi = {
+        ...AVI_DELBETALD,
+        id: 'rn-precision',
+        noticeNumber: 'A-ORE-1',
+        ocrNumber: '71111111111',
+        amount: nominellt,
+        totalAmount: nominellt,
+        nominalTotal: nominellt,
+        paid: betalt,
+        payableTotal: rest,
+      }
+      const regleradAvi = {
+        ...AVI_DELBETALD,
+        id: 'rn-precision-paid',
+        ocrNumber: '72222222222',
+        status: 'PAID' as const,
+        paid: 9000,
+        payableTotal: 0,
+        paidAt: '2026-09-20T12:00:00Z',
+      }
+      const faktura = {
+        ...FAKTURA_DELBETALD,
+        id: 'inv-precision',
+        invoiceNumber: 'F-ORE-1',
+        total: nominellt,
+        paid: betalt,
+        outstanding: rest,
+      }
+      api.fetchRentNotices.mockResolvedValue([avi, regleradAvi])
+      api.fetchInvoices.mockResolvedValue([faktura, FAKTURA_BETALD])
+      rendera()
+      await screen.findByText(avi.ocrNumber)
+      const avikort = kortMed(avi.ocrNumber)
+      // Exakta bokstavliga tal; Testing Library normaliserar endast blanksteg (inklusive NBSP).
+      expect(avikort.getByText(belopp, { exact: true })).toBeTruthy()
+      expect(avikort.getByText('Kvar att betala', { exact: true })).toBeTruthy()
+      expect(avikort.getByText(förklaring, { exact: true })).toBeTruthy()
+      expect(avikort.getByText('Skickad', { exact: true })).toBeTruthy()
+      fireEvent.click(screen.getByText('Inte registrerade som betalda'))
+      expect(screen.getByText(avi.ocrNumber)).toBeTruthy()
+      expect(screen.queryByText(regleradAvi.ocrNumber)).toBeNull()
+      const aviPdf = avikort.getByRole('button', { name: 'Ladda ned PDF' })
+      fireEvent.click(aviPdf)
+      await waitFor(() => expect(api.downloadRentNoticePdf).toHaveBeenCalledTimes(1))
+      expect(api.downloadRentNoticePdf).toHaveBeenCalledWith('rn-precision', 'A-ORE-1')
+      await waitFor(() => expect(aviPdf).toBeEnabled())
+      fireEvent.click(screen.getByText('Registrerade som betalda'))
+      expect(screen.getByText(regleradAvi.ocrNumber)).toBeTruthy()
+      expect(screen.queryByText(avi.ocrNumber)).toBeNull()
+
+      fireEvent.click(screen.getByRole('tab', { name: 'Fakturor' }))
+      await screen.findByText(faktura.invoiceNumber)
+      const fakturakort = kortMed(faktura.invoiceNumber)
+      expect(fakturakort.getByText(belopp, { exact: true })).toBeTruthy()
+      expect(fakturakort.getByText(förklaring, { exact: true })).toBeTruthy()
+      expect(fakturakort.getByText('Delvis betald', { exact: true })).toBeTruthy()
+      fireEvent.click(screen.getByText('Inte registrerade som betalda'))
+      expect(screen.getByText(faktura.invoiceNumber)).toBeTruthy()
+      expect(screen.queryByText(FAKTURA_BETALD.invoiceNumber)).toBeNull()
+      const fakturaPdf = fakturakort.getByRole('button', { name: 'Ladda ned PDF' })
+      fireEvent.click(fakturaPdf)
+      await waitFor(() => expect(api.downloadInvoicePdf).toHaveBeenCalledTimes(1))
+      expect(api.downloadInvoicePdf).toHaveBeenCalledWith('inv-precision', 'F-ORE-1')
+      await waitFor(() => expect(fakturaPdf).toBeEnabled())
+      fireEvent.click(screen.getByText('Registrerade som betalda'))
+      expect(screen.getByText(FAKTURA_BETALD.invoiceNumber)).toBeTruthy()
+      expect(screen.queryByText(faktura.invoiceNumber)).toBeNull()
+    },
+  )
+
+  it('skiljer verklig nollskuld från nominellt belopp och behåller hela kronor utan pålagda ören', async () => {
+    api.fetchRentNotices.mockResolvedValue([
+      {
+        ...AVI_DELBETALD,
+        id: 'rn-zero',
+        ocrNumber: '73333333333',
+        amount: 100,
+        totalAmount: 100,
+        nominalTotal: 100,
+        paid: 100,
+        payableTotal: 0,
+        status: 'PAID',
+        paidAt: '2026-09-20T12:00:00Z',
+      },
+      {
+        ...AVI_DELBETALD,
+        id: 'rn-whole',
+        ocrNumber: '74444444444',
+        amount: 1234,
+        totalAmount: 1234,
+        nominalTotal: 1234,
+        paid: 0,
+        payableTotal: 1234,
+      },
+    ] satisfies PortalRentNotice[])
+    api.fetchInvoices.mockResolvedValue([
+      {
+        ...FAKTURA_BETALD,
+        id: 'inv-zero',
+        invoiceNumber: 'F-ZERO',
+        total: 100,
+        paid: 100,
+        outstanding: 0,
+      },
+      {
+        ...FAKTURA_DELBETALD,
+        id: 'inv-whole',
+        invoiceNumber: 'F-WHOLE',
+        status: 'SENT',
+        total: 1234,
+        paid: 0,
+        outstanding: 1234,
+      },
+    ])
+    rendera()
+    await screen.findByText('73333333333')
+    const nollAvi = kortMed('73333333333')
+    expect(nollAvi.getByText('0 kr', { exact: true })).toBeTruthy()
+    expect(nollAvi.getByText('Kvar att betala', { exact: true })).toBeTruthy()
+    expect(nollAvi.getByText('Avins belopp 100 kr', { exact: true })).toBeTruthy()
+    expect(nollAvi.getByText('Betald', { exact: true })).toBeTruthy()
+    expect(nollAvi.queryByText(/^Kvar av /)).toBeNull()
+    expect(kortMed('74444444444').getByText('1 234 kr', { exact: true })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'Fakturor' }))
+    await screen.findByText('F-ZERO')
+    const nollFaktura = kortMed('F-ZERO')
+    expect(nollFaktura.getByText('0 kr', { exact: true })).toBeTruthy()
+    expect(nollFaktura.getByText('Kvar av 100 kr — 100 kr betalt', { exact: true })).toBeTruthy()
+    expect(nollFaktura.getByText('Betald', { exact: true })).toBeTruthy()
+    expect(kortMed('F-WHOLE').getByText('1 234 kr', { exact: true })).toBeTruthy()
+  })
+
+  it('visar debiteringens total med ören, även en enda decimal, utan att visa nettot som total', async () => {
+    api.fetchMiscCharges.mockResolvedValue([
+      {
+        id: 'mc-29',
+        description: 'Syntetisk debitering 29',
+        incidentDate: '2026-09-01',
+        netAmount: 0.24,
+        vatAmount: 0.05,
+        totalAmount: 0.29,
+      },
+      {
+        id: 'mc-10',
+        description: 'Syntetisk debitering 10',
+        incidentDate: '2026-09-01',
+        netAmount: 0.08,
+        vatAmount: 0.02,
+        totalAmount: 0.1,
+      },
+      {
+        id: 'mc-large',
+        description: 'Syntetisk större debitering',
+        incidentDate: '2026-09-01',
+        netAmount: 987.65,
+        vatAmount: 246.91,
+        totalAmount: 1234.56,
+      },
+    ])
+    rendera()
+    fireEvent.click(screen.getByRole('tab', { name: 'Debiteringar' }))
+    await screen.findByText('Syntetisk debitering 29')
+    expect(kortMed('Syntetisk debitering 29').getByText('0,29 kr', { exact: true })).toBeTruthy()
+    expect(kortMed('Syntetisk debitering 10').getByText('0,1 kr', { exact: true })).toBeTruthy()
+    expect(
+      kortMed('Syntetisk större debitering').getByText('1 234,56 kr', { exact: true }),
+    ).toBeTruthy()
   })
 })
