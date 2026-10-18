@@ -38,6 +38,10 @@ async function expectNoUnderConstruction(page: Page) {
 test('hyresgäst-portal: logga in → se avi → felanmälan → logga ut', async ({ page }) => {
   // ── 1. Logga in ──────────────────────────────────────────────────────────
   await page.goto(`${PORTAL}/login`)
+  // Välj cookies via samma synliga kontroll som hyresgästen innan navigationen används.
+  const cookies = page.getByRole('dialog', { name: 'Cookies', exact: true })
+  await cookies.getByRole('button', { name: 'Endast nödvändiga', exact: true }).click()
+  await expect(cookies).toBeHidden()
   await page.locator('#email').fill(tenant.email)
   await page.locator('#password').fill(tenant.password)
   await page.getByRole('button', { name: 'Logga in', exact: true }).click()

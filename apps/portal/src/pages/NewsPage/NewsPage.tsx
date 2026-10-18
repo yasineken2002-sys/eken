@@ -131,6 +131,7 @@ export function NewsPage() {
               <div className={styles.sheetHandle} />
               <button
                 type="button"
+                tabIndex={0}
                 className={styles.sheetClose}
                 onClick={() => setActivePost(null)}
                 aria-label="Stäng"
@@ -146,7 +147,12 @@ export function NewsPage() {
               </button>
             </div>
 
-            <div className={styles.sheetScroll}>
+            <div
+              className={styles.sheetScroll}
+              tabIndex={0}
+              role="region"
+              aria-labelledby="news-sheet-title"
+            >
               {activePost.imageUrl && (
                 <img
                   src={activePost.imageUrl}
