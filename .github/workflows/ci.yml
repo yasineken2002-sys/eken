@@ -1850,7 +1850,7 @@ jobs:
           npx playwright test --reporter=line 2>&1 | tee /tmp/e2e-run.log
 
       # Service worker, dialoger och cookieval provas mot byggd portal. Chromium och WebKit
-      # kör 27 fall var med egen loopback-fixture/profil, utan backend.
+      # kör 29 fall var med egen loopback-fixture/profil, utan backend.
       - name: Build portal for installation proof
         run: pnpm --filter @eken/portal build
 
@@ -1860,8 +1860,8 @@ jobs:
           pnpm exec playwright test --list > /tmp/portal-pwa-list.txt
           cat /tmp/portal-pwa-list.txt
           found=$(sed -n 's/^Total: \([0-9][0-9]*\) test.*/\1/p' /tmp/portal-pwa-list.txt)
-          if [ "$found" != "54" ]; then
-            echo "::error::Portalens installations- och dialogprov ska vara exakt 54; hittade '${found:-inget tal}'."
+          if [ "$found" != "58" ]; then
+            echo "::error::Portalens installations- och dialogprov ska vara exakt 58; hittade '${found:-inget tal}'."
             exit 1
           fi
 
@@ -1875,8 +1875,8 @@ jobs:
           import { readFileSync } from 'node:fs'
           const report = JSON.parse(readFileSync('test-results/pwa-report.json', 'utf8'))
           const { expected, unexpected, flaky, skipped } = report.stats
-          if (expected !== 54 || unexpected !== 0 || flaky !== 0 || skipped !== 0 || report.errors.length) {
-            throw new Error(`Portal: kräver 54 godkända och inga fel/omförsök/skip: ${JSON.stringify(report.stats)}`)
+          if (expected !== 58 || unexpected !== 0 || flaky !== 0 || skipped !== 0 || report.errors.length) {
+            throw new Error(`Portal: kräver 58 godkända och inga fel/omförsök/skip: ${JSON.stringify(report.stats)}`)
           }
           JS
 

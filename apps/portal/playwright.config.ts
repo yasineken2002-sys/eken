@@ -11,6 +11,7 @@ export default defineConfig({
     'portal-bankid-dialog.spec.ts',
     'portal-maintenance-sheet.spec.ts',
     'portal-cookie-nav.spec.ts',
+    'portal-maintenance-file-picker.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
