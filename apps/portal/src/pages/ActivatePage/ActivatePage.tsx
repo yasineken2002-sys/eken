@@ -4,19 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { SessionChangedError, useSessionMutation } from '@/lib/session-guard'
 import { PortalNetworkError } from '@/lib/network-state'
-import { validatePasswordStrength } from '@eken/shared'
+import { formatCurrency, validatePasswordStrength } from '@eken/shared'
 import { activateAccount, fetchActivationContract, fetchActivationInfo } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { Spinner } from '@/components/ui/Spinner'
 import { PasswordRequirements } from '@/components/ui/PasswordRequirements'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import styles from './ActivatePage.module.css'
-
-const SEK = new Intl.NumberFormat('sv-SE', {
-  style: 'currency',
-  currency: 'SEK',
-  maximumFractionDigits: 0,
-})
 
 function formatDate(d: string | null): string {
   if (!d) return 'Tills vidare'
@@ -295,12 +289,14 @@ function ActivateForm({ token }: { token: string }) {
                   )}
                   <div className={styles.detailRow}>
                     <span className={styles.detailLabel}>Månadshyra</span>
-                    <span className={styles.detailValue}>{SEK.format(lease.monthlyRent)}</span>
+                    <span className={styles.detailValue}>{formatCurrency(lease.monthlyRent)}</span>
                   </div>
                   {lease.depositAmount > 0 && (
                     <div className={styles.detailRow}>
                       <span className={styles.detailLabel}>Deposition</span>
-                      <span className={styles.detailValue}>{SEK.format(lease.depositAmount)}</span>
+                      <span className={styles.detailValue}>
+                        {formatCurrency(lease.depositAmount)}
+                      </span>
                     </div>
                   )}
                   <div className={styles.detailRow}>
