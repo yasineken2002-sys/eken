@@ -387,7 +387,8 @@ export class FortnoxConnectionService {
       if (fresh && fresh.status === 'ACTIVE' && fresh.tokenVersion !== conn.tokenVersion) {
         return {
           token: this.crypto.decrypt(fresh.accessTokenEnc),
-          ...ids,
+          connectionId: fresh.id,
+          databaseNumber: fresh.fortnoxDatabaseNumber,
           tokenVersion: fresh.tokenVersion,
         }
       }
