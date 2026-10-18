@@ -497,6 +497,7 @@ export class FortnoxConnectionService {
         refreshAttemptId: null,
         OR: [{ refreshLeaseUntil: null }, { refreshLeaseUntil: { lt: new Date(now) } }],
         ...boundWhere,
+        organizationId,
       },
       data: { refreshLeaseUntil: new Date(now + REFRESH_LEASE_MS), refreshAttemptId: attemptId },
     })
