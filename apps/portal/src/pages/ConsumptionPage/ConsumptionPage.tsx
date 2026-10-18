@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { formatCurrency } from '@eken/shared'
 import { fetchConsumption } from '@/api/portal.api'
 import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
@@ -37,14 +38,6 @@ function formatPeriod(startStr: string, endStr: string): string {
   return `${fmt.format(start)} – ${fmt.format(end)} ${end.getFullYear()}`
 }
 
-function formatSek(amount: number): string {
-  return new Intl.NumberFormat('sv-SE', {
-    style: 'currency',
-    currency: 'SEK',
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
 function formatQty(value: number): string {
   return value.toLocaleString('sv-SE', { maximumFractionDigits: 3 })
 }
@@ -67,7 +60,7 @@ function ChargeCard({ charge, high }: { charge: PortalConsumptionCharge; high: b
           {formatQty(charge.quantity)} {meter.unit}
           {high && <span className={styles.highTag}>Hög</span>}
         </p>
-        <p className={styles.amount}>{formatSek(charge.totalAmount)}</p>
+        <p className={styles.amount}>{formatCurrency(charge.totalAmount)}</p>
       </div>
     </div>
   )
