@@ -124,7 +124,13 @@ function DocumentCard({ doc }: { doc: PortalDocument }) {
           {doc.description && <p className={styles.docDesc}>{doc.description}</p>}
         </div>
       </div>
-      <button className={styles.downloadBtn} onClick={handleDownload} disabled={loading}>
+      <button
+        type="button"
+        tabIndex={0}
+        className={styles.downloadBtn}
+        onClick={handleDownload}
+        disabled={loading}
+      >
         {loading ? 'Laddar...' : 'Ladda ned'}
       </button>
     </div>
