@@ -15,6 +15,7 @@ export default defineConfig({
     'portal-news-scroll.spec.ts',
     'portal-ticket-keyboard.spec.ts',
     'portal-ticket-text-wrap.spec.ts',
+    'portal-document-keyboard.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,

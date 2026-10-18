@@ -62,7 +62,13 @@ let settings
 let counters
 function reset() {
   settings = { fallback: 'valid', version: 1, navigation500: false, dropNavigation: false }
-  counters = { posts: [], privateReads: [], documentReads: [], offlineRequests: 0 }
+  counters = {
+    posts: [],
+    privateReads: [],
+    documentReads: [],
+    keyboardDownloads: [],
+    offlineRequests: 0,
+  }
 }
 reset()
 
@@ -89,6 +95,33 @@ async function handle(req, res) {
   const origin = `http://127.0.0.1:${port}`
   const url = new URL(req.url, origin)
   const path = url.pathname
+  // Native browsernedladdningar kan gå utanför Playwrights route-interception.
+  // En exakt loopbackfixtur ger därför verkliga bytes och ett serverkvitto.
+  if (path.startsWith('/__document-keyboard/')) {
+    let receivedBytes = 0
+    for await (const chunk of req) {
+      receivedBytes += chunk.length
+      if (receivedBytes > 4096) break
+    }
+    counters.keyboardDownloads.push({
+      method: req.method,
+      path,
+      query: url.search,
+      hasAuthorization: req.headers.authorization !== undefined,
+      receivedBytes,
+    })
+    if (
+      req.method !== 'GET' ||
+      path !== '/__document-keyboard/a.pdf' ||
+      url.search !== '?signature=SYNTHETIC_DOCUMENT_A' ||
+      req.headers.authorization !== undefined ||
+      receivedBytes !== 0
+    )
+      return send(res, 400, 'Ogiltig syntetisk nedladdning')
+    return send(res, 200, '%PDF-1.4\nSYNTHETIC_DOCUMENT_A_ONLY\n%%EOF\n', 'application/pdf', {
+      'Content-Disposition': 'attachment',
+    })
+  }
   if (path === '/__fixture/health') return json(res, 200, { ready: true })
   if (path === '/__fixture/state' && req.method === 'GET') return json(res, 200, counters)
   if (path === '/__fixture/reset' && req.method === 'POST') {
