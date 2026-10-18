@@ -142,6 +142,21 @@ export type SourceVoucherStep =
   | { phase: 'MANIFEST'; page: number }
   | { phase: 'DETAILS'; key: string }
   | { phase: 'READY_TO_REDUCE' }
+/** Liten serverägd kopia av den sparade bindningen, utan token eller källdata. */
+export type SourceResumeScope = Readonly<{
+  organizationId: string
+  runId: string
+  sourceCaptureId: string
+  requestHash: string
+  connectionId: string
+  connectionGeneration: number
+  fortnoxDatabaseNumber: number
+  fortnoxOrgNumber: string | null
+  financialYear: Readonly<{ id: number; fromDate: string; toDate: string }>
+}>
+export type BoundResumeStep =
+  | { phase: 'SOURCE_CAPTURED' }
+  | (SourceVoucherStep & { scope: SourceResumeScope })
 type HeldContextLease = { value: SourceRunLease }
 type CatalogContext = {
   held: HeldContextLease
@@ -604,6 +619,48 @@ export class FortnoxReadSourceRunService {
       }
       await this.assertContextLeaseTime(tx, run)
       return step
+    })
+  }
+
+  /** Återuppta ett känt runId med position och anslutning ur samma låsta underlag.
+   * Ingen nätläsning och ingen ny start; commit måste åter kontrollera fencen. */
+  async getResumeStep(lease: SourceRunLease): Promise<BoundResumeStep> {
+    return this.withLease(lease, async (tx, run, _now, source) => {
+      if (run.phase === 'SOURCE_CAPTURED') {
+        await this.assertContextLeaseTime(tx, run)
+        return { phase: 'SOURCE_CAPTURED' }
+      }
+      // withLease har redan kontrollerat att datumen och urvalet matchar katalogen.
+      if (!run.financialYearStart || !run.financialYearEnd) throw invalid()
+      let step: SourceVoucherStep
+      if (run.phase === 'MANIFEST') {
+        step = { phase: 'MANIFEST', page: run.nextManifestPage }
+      } else if (run.phase === 'DETAILS') {
+        const key = await nextVoucherKey(tx, run)
+        if (!key) throw invalid()
+        step = { phase: 'DETAILS', key }
+      } else if (run.phase === 'READY_TO_REDUCE') {
+        step = { phase: 'READY_TO_REDUCE' }
+      } else {
+        throw wrongVoucherStep()
+      }
+      const scope: SourceResumeScope = Object.freeze({
+        organizationId: source.organizationId,
+        runId: run.id,
+        sourceCaptureId: source.id,
+        requestHash: source.requestHash,
+        connectionId: source.connectionId,
+        connectionGeneration: source.connectionGeneration,
+        fortnoxDatabaseNumber: source.fortnoxDatabaseNumber,
+        fortnoxOrgNumber: source.fortnoxOrgNumber,
+        financialYear: Object.freeze({
+          id: source.input.financialYearId,
+          fromDate: run.financialYearStart.toISOString().slice(0, 10),
+          toDate: run.financialYearEnd.toISOString().slice(0, 10),
+        }),
+      })
+      await this.assertContextLeaseTime(tx, run)
+      return { ...step, scope }
     })
   }
 
