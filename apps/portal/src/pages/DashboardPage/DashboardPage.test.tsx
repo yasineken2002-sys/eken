@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DashboardPage } from './DashboardPage'
 import { NoticesPage } from '../NoticesPage/NoticesPage'
+import type { PortalDashboard } from '@/types/portal.types'
 
 /**
  * #913 — VAD TALET PÅ "AVIER"-KORTET FAKTISKT ÄR.
@@ -44,8 +45,11 @@ const BAS = {
   unreadNotices: 0,
 }
 
-function rendera(overdueInvoices: number) {
-  api.fetchDashboard.mockResolvedValue({ ...BAS, overdueInvoices })
+function rendera(
+  overdueInvoices: number,
+  fields: Partial<Pick<PortalDashboard, 'activeLease' | 'upcomingInvoice'>> = {},
+) {
+  api.fetchDashboard.mockResolvedValue({ ...BAS, overdueInvoices, ...fields })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <MemoryRouter>
@@ -84,7 +88,6 @@ describe('#913 — Avier-kortets underrad säger vad talet är', () => {
     expect(screen.queryByText('Inga förfallna')).toBeNull()
   })
 })
-
 
 // ── #915 — KORTET SOM VISADE FAKTUROR OCH HETTE AVIER ──────────────────────
 //
@@ -160,4 +163,116 @@ describe('#915 — kortet heter Fakturor och går till fakturafliken', () => {
       'false',
     )
   })
+})
+
+/** Verklig sida/formatterare; expected är bokstavliga belopp, inte produktberäkningar. */
+describe('dashboardens öresbelopp', () => {
+  it.each([
+    {
+      fall: 'rest 0.29 och månadshyra med två decimaler',
+      monthlyRent: 1234.56,
+      total: 100,
+      paid: 99.71,
+      outstanding: 0.29,
+      status: 'PARTIAL',
+      hyra: '1 234,56 kr',
+      rest: '0,29 kr',
+      nominalrad: 'Kvar av 100 kr',
+      badge: 'Delvis betald',
+    },
+    {
+      fall: 'rest 0.01 och nominalradens egna ören',
+      monthlyRent: 7500,
+      total: 99.71,
+      paid: 99.7,
+      outstanding: 0.01,
+      status: 'PARTIAL',
+      hyra: '7 500 kr',
+      rest: '0,01 kr',
+      nominalrad: 'Kvar av 99,71 kr',
+      badge: 'Delvis betald',
+    },
+    {
+      fall: 'större rest utan betalning och månadshyra med en decimal',
+      monthlyRent: 7500.1,
+      total: 1234.56,
+      paid: 0,
+      outstanding: 1234.56,
+      status: 'SENT',
+      hyra: '7 500,1 kr',
+      rest: '1 234,56 kr',
+      nominalrad: null,
+      badge: 'Skickad',
+    },
+    {
+      fall: 'äkta nollskuld och hela kronor',
+      monthlyRent: 7500,
+      total: 100,
+      paid: 100,
+      outstanding: 0,
+      status: 'PAID',
+      hyra: '7 500 kr',
+      rest: '0 kr',
+      nominalrad: 'Kvar av 100 kr',
+      badge: 'Betald',
+    },
+  ] as const)(
+    '$fall',
+    async ({ monthlyRent, total, paid, outstanding, status, hyra, rest, nominalrad, badge }) => {
+      rendera(0, {
+        activeLease: {
+          id: 'lease-precision',
+          status: 'ACTIVE',
+          startDate: '2026-01-01T12:00:00.000Z',
+          endDate: null,
+          monthlyRent,
+          depositAmount: 0,
+          noticePeriodMonths: 3,
+          unit: {
+            id: 'unit-precision',
+            name: 'Lägenhet 1',
+            unitNumber: '1001',
+            area: 45,
+            floor: 1,
+            rooms: 2,
+          },
+          property: {
+            id: 'property-precision',
+            name: 'Syntetisk fastighet',
+            street: 'Syntetisk gata 1',
+            city: 'Provstad',
+            postalCode: '12345',
+          },
+        },
+        upcomingInvoice: {
+          id: 'invoice-precision',
+          invoiceNumber: 'F-PRECISION',
+          type: 'RENT',
+          status,
+          total,
+          paid,
+          outstanding,
+          issueDate: '2026-09-01T12:00:00.000Z',
+          dueDate: '2026-10-01T12:00:00.000Z',
+          paidAt: status === 'PAID' ? '2026-09-20T12:00:00.000Z' : null,
+          propertyName: 'Syntetisk fastighet',
+          unitName: 'Lägenhet 1',
+        },
+      })
+      const rubrik = await screen.findByText('Senaste avi', { exact: true })
+      const avikort = rubrik.parentElement?.parentElement
+      const hyresbelopp = screen.getByText('per månad', { exact: true }).parentElement
+      if (!avikort || !hyresbelopp) throw new Error('Dashboardens beloppskort saknas')
+      // NBSP/blanksteg normaliseras av getByText, men alla siffror och decimaltecken är exakta.
+      expect(within(hyresbelopp).getByText(hyra, { exact: true })).toBeTruthy()
+      const senaste = within(avikort)
+      expect(senaste.getByText(rest, { exact: true })).toBeTruthy()
+      expect(senaste.getByText(badge, { exact: true })).toBeTruthy()
+      if (nominalrad === null) {
+        expect(senaste.queryByText(/^Kvar av /)).toBeNull()
+      } else {
+        expect(senaste.getByText(nominalrad, { exact: true })).toBeTruthy()
+      }
+    },
+  )
 })
