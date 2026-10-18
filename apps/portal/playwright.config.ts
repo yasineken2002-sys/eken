@@ -18,6 +18,7 @@ export default defineConfig({
     'portal-document-keyboard.spec.ts',
     'portal-document-text-wrap.spec.ts',
     'portal-consumption-precision.spec.ts',
+    'portal-settings-export.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
