@@ -7,7 +7,7 @@
  * som skapats och godkänts av FortnoxKontomappningService mot den lokala Fortnox-fejken.
  */
 import { randomUUID } from 'node:crypto'
-import type { PrismaClient } from '@prisma/client'
+import type { Account, PrismaClient } from '@prisma/client'
 import type { FortnoxAccountMappingRowInput } from '@eken/shared'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import type { FortnoxConnectionService } from './fortnox-connection.service'
@@ -81,16 +81,42 @@ export async function leverantorsfaktura(
     radtext?: [string | null, string | null]
     kostnadskonto?: number
     verNumber?: number
+    forbereddaKonton?: {
+      kostnad: Pick<Account, 'id' | 'organizationId' | 'number'>
+      skuld: Pick<Account, 'id' | 'organizationId' | 'number'>
+    }
   } = {},
 ) {
   const belopp = opts.belopp ?? '1234.50'
   const datum = new Date(opts.datum ?? '2026-10-02')
   const kostnad = opts.kostnadskonto ?? 5170
+  const forberedda = opts.forbereddaKonton
+  // G2 återanvänder endast faktiska create-resultat från sin aktuella organisation.
+  // En lämnad men felbunden option får aldrig falla tillbaka till databasuppslag.
+  if (forberedda !== undefined) {
+    const a = forberedda?.kostnad
+    const b = forberedda?.skuld
+    if (
+      !a ||
+      !b ||
+      a.organizationId !== organizationId ||
+      b.organizationId !== organizationId ||
+      a.number !== kostnad ||
+      b.number !== 2440 ||
+      typeof a.id !== 'string' ||
+      typeof b.id !== 'string' ||
+      a.id.trim().length === 0 ||
+      b.id.trim().length === 0 ||
+      a.id === b.id
+    ) {
+      throw new Error('Förberedda konton matchar inte fakturans organisation och konton')
+    }
+  }
   const konto = async (number: number, type: 'EXPENSE' | 'LIABILITY') =>
     (await prisma.account.findFirst({ where: { organizationId, number } })) ??
     prisma.account.create({ data: { organizationId, number, name: `Konto ${number}`, type } })
-  const a = await konto(kostnad, 'EXPENSE')
-  const b = await konto(2440, 'LIABILITY')
+  const a = forberedda === undefined ? await konto(kostnad, 'EXPENSE') : forberedda.kostnad
+  const b = forberedda === undefined ? await konto(2440, 'LIABILITY') : forberedda.skuld
   const f = await prisma.supplierInvoice.create({
     data: {
       organizationId,
