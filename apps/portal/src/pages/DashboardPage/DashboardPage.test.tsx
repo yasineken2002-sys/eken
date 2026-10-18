@@ -4,7 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DashboardPage } from './DashboardPage'
 import { NoticesPage } from '../NoticesPage/NoticesPage'
-import type { PortalDashboard } from '@/types/portal.types'
+import type { PortalDashboard, PortalInvoice, PortalRentNotice } from '@/types/portal.types'
 
 /**
  * #913 — VAD TALET PÅ "AVIER"-KORTET FAKTISKT ÄR.
@@ -275,4 +275,94 @@ describe('dashboardens öresbelopp', () => {
       }
     },
   )
+})
+
+it('Senaste avi → Visa alla öppnar samma faktura med rätt restbelopp och PDF', async () => {
+  const faktura: PortalInvoice = {
+    id: 'invoice-latest-link',
+    invoiceNumber: 'F-SENASTE-29',
+    type: 'RENT',
+    status: 'PARTIAL',
+    total: 100,
+    paid: 99.71,
+    outstanding: 0.29,
+    issueDate: '2099-09-01T12:00:00.000Z',
+    dueDate: '2099-10-01T12:00:00.000Z',
+    paidAt: null,
+    propertyName: 'Syntetisk fastighet',
+    unitName: 'Lägenhet 1',
+  }
+  const annanAvi: PortalRentNotice = {
+    id: 'rent-sentinel-other',
+    noticeNumber: 'AVI-ANNAN-7500',
+    type: 'RENT',
+    ocrNumber: '85555555555',
+    month: 10,
+    year: 2099,
+    amount: 7500,
+    vatAmount: 0,
+    consumptionAmount: 0,
+    miscChargeAmount: 0,
+    totalAmount: 7500,
+    payableTotal: 7500,
+    nominalTotal: 7500,
+    paid: 0,
+    dueDate: '2099-10-01T12:00:00.000Z',
+    paidAt: null,
+    status: 'SENT',
+    sentAt: '2099-09-20T12:00:00.000Z',
+    propertyName: 'Annan syntetisk avi',
+    unitName: 'Lägenhet 2',
+  }
+  api.fetchDashboard.mockResolvedValue({
+    ...BAS,
+    overdueInvoices: 0,
+    upcomingInvoice: faktura,
+  })
+  api.fetchInvoices.mockResolvedValue([faktura])
+  api.fetchRentNotices.mockResolvedValue([annanAvi])
+  api.fetchMiscCharges.mockResolvedValue([])
+  api.downloadInvoicePdf.mockResolvedValue(undefined)
+  api.downloadRentNoticePdf.mockResolvedValue(undefined)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <MemoryRouter initialEntries={['/']}>
+      <QueryClientProvider client={qc}>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/notices" element={<NoticesPage />} />
+        </Routes>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  )
+  const rubrik = await screen.findByText('Senaste avi', { exact: true })
+  const senasteKort = rubrik.parentElement?.parentElement
+  if (!senasteKort) throw new Error('Senaste avi-kortet saknas')
+  expect(within(senasteKort).getByText('0,29 kr', { exact: true })).toBeTruthy()
+  // Klicka rätt korts riktiga länk — inte snabbkortet Fakturor och ingen navigate-spy.
+  fireEvent.click(
+    within(senasteKort).getByRole('button', {
+      name: 'Visa alla →',
+    }),
+  )
+  const fakturaflik = await screen.findByRole('tab', { name: 'Fakturor' })
+  await waitFor(() => expect(fakturaflik.getAttribute('aria-selected')).toBe('true'))
+  expect(screen.getByRole('tab', { name: 'Avier' }).getAttribute('aria-selected')).toBe('false')
+  const nummer = await screen.findByText('F-SENASTE-29', { exact: true })
+  const fakturakort = nummer.parentElement?.parentElement
+  if (!fakturakort) throw new Error('Fakturakortet saknas')
+  expect(within(fakturakort).getByText('0,29 kr', { exact: true })).toBeTruthy()
+  expect(within(fakturakort).getByText('Delvis betald', { exact: true })).toBeTruthy()
+  expect(screen.queryByText('85555555555', { exact: true })).toBeNull()
+  expect(screen.queryByText('Annan syntetisk avi · Lägenhet 2', { exact: true })).toBeNull()
+  const pdf = within(fakturakort).getByRole('button', {
+    name: 'Ladda ned PDF',
+  })
+  fireEvent.click(pdf)
+  await waitFor(() => expect(api.downloadInvoicePdf).toHaveBeenCalledTimes(1))
+  // Vänta också handlerns finally/render före sluträkningarna, inte bara mockanropet.
+  await waitFor(() => expect(pdf).toBeEnabled())
+  expect(api.downloadInvoicePdf).toHaveBeenCalledTimes(1)
+  expect(api.downloadInvoicePdf).toHaveBeenCalledWith('invoice-latest-link', 'F-SENASTE-29')
+  expect(api.downloadRentNoticePdf).not.toHaveBeenCalled()
 })

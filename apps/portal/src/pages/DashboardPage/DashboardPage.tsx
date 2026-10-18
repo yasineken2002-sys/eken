@@ -265,8 +265,8 @@ export function DashboardPage() {
               mekanism. Att den verkligen öppnar rätt flik är prövat, inte antaget.
 
               Avierna når hyresgästen fortfarande via bottennavigeringens
-              "Avier" (`PortalLayout` NAV_ITEMS) och via "Visa alla →" i kortet
-              "Senaste avi" nedan. Båda orörda. */}
+              "Avier" (`PortalLayout` NAV_ITEMS). Kortet "Senaste avi" nedan
+              visar också en faktura och länkar därför till fakturafliken. */}
           <button className={styles.actionCard} onClick={() => navigate('/notices?tab=invoices')}>
             <div className={styles.actionIcon} style={{ background: '#e8f0fd', color: '#3b82f6' }}>
               <FakturorSvg />
@@ -327,7 +327,10 @@ export function DashboardPage() {
           <div className={styles.noticeCard}>
             <div className={styles.noticeHeader}>
               <p className={styles.noticeHeaderTitle}>Senaste avi</p>
-              <button className={styles.noticeHeaderLink} onClick={() => navigate('/notices')}>
+              <button
+                className={styles.noticeHeaderLink}
+                onClick={() => navigate('/notices?tab=invoices')}
+              >
                 Visa alla →
               </button>
             </div>
