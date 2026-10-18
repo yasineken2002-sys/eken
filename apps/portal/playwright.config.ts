@@ -12,6 +12,7 @@ export default defineConfig({
     'portal-maintenance-sheet.spec.ts',
     'portal-cookie-nav.spec.ts',
     'portal-maintenance-file-picker.spec.ts',
+    'portal-news-scroll.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
