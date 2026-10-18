@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { SessionChangedError, useSessionMutation } from '@/lib/session-guard'
 import { PortalNetworkError } from '@/lib/network-state'
 import { validatePasswordStrength } from '@eken/shared'
@@ -177,14 +178,30 @@ function ActivateForm({ token }: { token: string }) {
   }
 
   if (infoQuery.isError || !infoQuery.data) {
+    const invalidLink = isAxiosError(infoQuery.error) && infoQuery.error.response?.status === 401
     return (
       <div className={styles.page}>
         <div className={styles.card}>
           <div className={styles.errorIcon}>❌</div>
-          <h1 className={styles.title}>Länken är ogiltig</h1>
+          <h1 className={styles.title}>
+            {invalidLink ? 'Länken är ogiltig' : 'Kunde inte hämta uppgifterna'}
+          </h1>
           <p className={styles.subtitle}>
-            Aktiveringslänken är ogiltig eller har gått ut. Be din hyresvärd skicka en ny länk.
+            {invalidLink
+              ? 'Aktiveringslänken är ogiltig eller har gått ut. Be din hyresvärd skicka en ny länk.'
+              : 'Det gick inte att hämta dina kontraktsuppgifter just nu. Försök igen om en stund.'}
           </p>
+          {!invalidLink && (
+            <button
+              type="button"
+              tabIndex={0}
+              className={styles.submitBtn}
+              disabled={infoQuery.isFetching}
+              onClick={() => void infoQuery.refetch()}
+            >
+              Försök igen
+            </button>
+          )}
           <div className={styles.centerBlock}>
             <Link to="/login" className={styles.linkBack}>
               Till inloggningen
