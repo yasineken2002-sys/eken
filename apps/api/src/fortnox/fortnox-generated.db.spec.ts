@@ -634,6 +634,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       const ore = amount(r)
       const desc = `EVENO TEST GEN ${FRON.G2}-${i}`
       const je = await leverantorsfaktura(prisma, t.o.id, {
+        forbereddaKonton: { kostnad: t.a, skuld: t.b },
         belopp: oreStr(ore),
         beskrivning: desc,
         // G2:s fasta frö styr inte Math.random i fixturens standardnumrering.
