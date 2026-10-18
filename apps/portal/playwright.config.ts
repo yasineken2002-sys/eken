@@ -19,6 +19,7 @@ export default defineConfig({
     'portal-document-text-wrap.spec.ts',
     'portal-consumption-precision.spec.ts',
     'portal-settings-export.spec.ts',
+    'portal-ticket-journey.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
