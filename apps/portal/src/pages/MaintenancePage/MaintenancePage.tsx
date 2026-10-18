@@ -1,5 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useFocusTrap } from '@eken/ui/hooks'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -70,7 +70,7 @@ function formatDateSv(dateStr: string): string {
 function CategoryDot({ category }: { category: string }) {
   const cat = getCategoryStyle(category)
   return (
-    <div
+    <span
       style={{
         width: 40,
         height: 40,
@@ -86,11 +86,12 @@ function CategoryDot({ category }: { category: string }) {
       }}
     >
       {cat.label.slice(0, 2)}
-    </div>
+    </span>
   )
 }
 
 function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
+  const bodyId = useId()
   const [expanded, setExpanded] = useState(false)
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
@@ -121,20 +122,29 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
 
   return (
     <div className={styles.ticketCard}>
-      <div className={styles.ticketRow} onClick={() => setExpanded((v) => !v)}>
+      <button
+        type="button"
+        tabIndex={0}
+        className={styles.ticketRow}
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        onClick={() => setExpanded((v) => !v)}
+      >
         <CategoryDot category={ticket.category} />
-        <div className={styles.ticketCenter}>
-          <p className={styles.ticketTitle}>{ticket.title}</p>
-          <p className={styles.ticketDate}>{formatDateSv(ticket.createdAt)}</p>
-        </div>
-        <div className={styles.ticketRight}>
+        <span className={styles.ticketCenter}>
+          <span className={styles.ticketTitle}>{ticket.title}</span>
+          <span className={styles.ticketDate}>{formatDateSv(ticket.createdAt)}</span>
+        </span>
+        <span className={styles.ticketRight}>
           <StatusBadge type="maintenance" status={ticket.status} />
-          <span className={styles.ticketChevron}>{expanded ? '▲' : '▼'}</span>
-        </div>
-      </div>
+          <span className={styles.ticketChevron} aria-hidden="true">
+            {expanded ? '▲' : '▼'}
+          </span>
+        </span>
+      </button>
 
       {expanded && (
-        <div className={styles.ticketBody}>
+        <div id={bodyId} className={styles.ticketBody}>
           <p className={styles.ticketDescription}>{ticket.description}</p>
 
           {publicComments.length > 0 && (
@@ -152,6 +162,7 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
           <div className={styles.commentForm}>
             <textarea
               className={styles.commentInput}
+              aria-label="Meddelande till hyresvärden"
               placeholder="Lägg till ett meddelande..."
               value={comment}
               onChange={(e) => {
@@ -161,6 +172,8 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
               rows={3}
             />
             <button
+              type="button"
+              tabIndex={0}
               className={styles.commentBtn}
               onClick={() => void handleComment()}
               disabled={!comment.trim() || sending}

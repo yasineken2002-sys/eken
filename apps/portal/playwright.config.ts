@@ -13,6 +13,7 @@ export default defineConfig({
     'portal-cookie-nav.spec.ts',
     'portal-maintenance-file-picker.spec.ts',
     'portal-news-scroll.spec.ts',
+    'portal-ticket-keyboard.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
