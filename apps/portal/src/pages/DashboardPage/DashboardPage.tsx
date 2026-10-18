@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { formatCurrency } from '@eken/shared'
 import { fetchDashboard } from '@/api/portal.api'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Spinner } from '@/components/ui/Spinner'
@@ -19,15 +20,6 @@ function formatDateSv(): string {
     day: 'numeric',
     month: 'long',
   }).format(new Date())
-}
-
-function formatCurrencySv(amount: number): string {
-  return new Intl.NumberFormat('sv-SE', {
-    style: 'currency',
-    currency: 'SEK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
 }
 
 function formatDateShort(dateStr: string): string {
@@ -227,7 +219,7 @@ export function DashboardPage() {
           <div className={styles.leaseCard}>
             <div className={styles.leaseTop}>
               <div>
-                <p className={styles.leaseRent}>{formatCurrencySv(activeLease.monthlyRent)}</p>
+                <p className={styles.leaseRent}>{formatCurrency(activeLease.monthlyRent)}</p>
                 <p className={styles.leaseRentLabel}>per månad</p>
               </div>
               <StatusBadge type="lease" status={activeLease.status} />
@@ -275,10 +267,7 @@ export function DashboardPage() {
               Avierna når hyresgästen fortfarande via bottennavigeringens
               "Avier" (`PortalLayout` NAV_ITEMS) och via "Visa alla →" i kortet
               "Senaste avi" nedan. Båda orörda. */}
-          <button
-            className={styles.actionCard}
-            onClick={() => navigate('/notices?tab=invoices')}
-          >
+          <button className={styles.actionCard} onClick={() => navigate('/notices?tab=invoices')}>
             <div className={styles.actionIcon} style={{ background: '#e8f0fd', color: '#3b82f6' }}>
               <FakturorSvg />
             </div>
@@ -352,12 +341,10 @@ export function DashboardPage() {
               <div className={styles.noticeRight}>
                 {/* #342 — se NoticesPage: restskulden är talet hyresgästen ska
                     agera på, och den ska stämma med brevet. */}
-                <p className={styles.noticeAmount}>
-                  {formatCurrencySv(upcomingInvoice.outstanding)}
-                </p>
+                <p className={styles.noticeAmount}>{formatCurrency(upcomingInvoice.outstanding)}</p>
                 {upcomingInvoice.paid > 0 && (
                   <p className={styles.noticeAmountSub}>
-                    Kvar av {formatCurrencySv(upcomingInvoice.total)}
+                    Kvar av {formatCurrency(upcomingInvoice.total)}
                   </p>
                 )}
                 <StatusBadge type="invoice" status={upcomingInvoice.status} />
