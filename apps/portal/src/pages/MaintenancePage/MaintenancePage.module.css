@@ -240,7 +240,8 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
-  z-index: 60;
+  /* Över cookiepanelen (110), under den renderade panelen (200). */
+  z-index: 190;
 }
 
 .sheet {
