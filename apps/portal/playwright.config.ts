@@ -14,6 +14,7 @@ export default defineConfig({
     'portal-maintenance-file-picker.spec.ts',
     'portal-news-scroll.spec.ts',
     'portal-ticket-keyboard.spec.ts',
+    'portal-ticket-text-wrap.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,

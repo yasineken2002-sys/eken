@@ -172,6 +172,7 @@
 }
 
 .ticketDescription {
+  overflow-wrap: anywhere;
   font-size: 14px;
   color: #444;
   line-height: 1.5;
@@ -199,6 +200,7 @@
 }
 
 .commentContent {
+  overflow-wrap: anywhere;
   font-size: 13px;
   color: var(--ev-neutral-900);
 }
