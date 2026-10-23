@@ -139,7 +139,34 @@ rättsligt bindande beslut.
 Inom Kundens organisation kan andra Användare se uppgifter om dig (t.ex.
 namn, e-post, roll) i syfte att samarbeta i Tjänsten.
 
-### 4.4 Vid bolagsöverlåtelse
+### 4.4 Hantverkare och entreprenörer som anlitas för avhjälpande
+
+När en felanmälan ska åtgärdas skickar hyresvärden en arbetsorder till en
+hantverkare eller entreprenör. Följande uppgifter kan då lämnas ut:
+
+| Uppgift                                       | Lämnas ut                                                       |
+| --------------------------------------------- | --------------------------------------------------------------- |
+| Lägenhetens adress                            | Alltid — hantverkaren måste veta vart hen ska                   |
+| Ärendets beskrivning                          | Alltid — det är vad som ska åtgärdas                            |
+| Hyresgästens telefonnummer eller e-postadress | Endast när hyresvärden aktivt valt det för det enskilda ärendet |
+
+Hyresgästens **namn lämnas inte ut**. Hantverkaren får en adress, en
+beskrivning av felet och — om hyresvärden valt det — en kontaktväg.
+
+**Ändamålet** är att fullgöra hyresavtalets underhållsskyldighet — att
+avhjälpa det fel hyresgästen anmält. Kontaktuppgiften delas för att
+hantverkaren ska kunna komma överens om en tid direkt med hyresgästen.
+
+Delningen av kontaktuppgift är **inte förvald**. Hyresvärden tar ställning
+per arbetsorder, och lämnas ingen kontaktuppgift ut sköts tidsbokningen via
+hyresvärden. Vad som delades, med vem och när sparas på arbetsordern, och
+hyresgästen kan se i sin portal att uppgiften lämnats ut.
+
+Hantverkaren är ett fristående företag som utför uppdraget under eget ansvar
+och bestämmer själv hur uppgiften hanteras efter mottagandet. Hur länge
+uppgiften behålls ligger därmed utanför Evenos och hyresvärdens rådighet.
+
+### 4.5 Vid bolagsöverlåtelse
 
 Vid en eventuell försäljning eller fusion av Eveno kan personuppgifter
 överföras till förvärvaren, som då blir bunden av denna policy fram tills

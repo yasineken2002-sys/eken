@@ -101,6 +101,38 @@ export function PrivacyPage() {
       </ul>
       <p>Samtliga är bundna av personuppgiftsbiträdesavtal enligt artikel 28 GDPR.</p>
 
+      {/*
+        FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
+        DEN HÄR SIDAN LÄSES AV HYRESGÄSTEN, och det är hyresgästens
+        kontaktuppgift som delas. Av de tre kopiorna är det alltså här texten
+        betyder mest — den är skriven i du-form av det skälet.
+
+        Stycket står UTANFÖR listan ovan med flit: meningen "samtliga är bundna
+        av personuppgiftsbiträdesavtal" gäller INTE hantverkaren, som är en
+        självständig mottagare och inget biträde.
+
+        Rättslig grund enligt hyresjuristens bedömning: avtalets fullgörande,
+        inte samtycke. Se web-sidans kommentar och docs/legal/privacy-policy.md.
+      */}
+      <h3>Hantverkare som åtgärdar din felanmälan</h3>
+      <p>
+        När du gör en felanmälan skickar din hyresvärd en arbetsorder till en hantverkare.
+        Lägenhetens adress och det du beskrivit i anmälan lämnas alltid ut — hantverkaren måste veta
+        vart hen ska och vad som ska göras.
+      </p>
+      <p>
+        En kontaktuppgift till dig (telefonnummer eller e-postadress) lämnas ut{' '}
+        <strong>bara när din hyresvärd aktivt valt det</strong> för just det ärendet, så att
+        hantverkaren kan komma överens om en tid direkt med dig. Görs inte det valet sköts
+        tidsbokningen via hyresvärden. <strong>Ditt namn lämnas inte ut.</strong>
+      </p>
+      <p>
+        Du ser i ärendets historik om en kontaktuppgift har lämnats ut och till vem. Hantverkaren är
+        i regel ett fristående företag som bestämmer själv hur uppgiften används efter mottagandet,
+        och omfattas därför inte av biträdesavtalen ovan.
+      </p>
+
       <h2 id="sec-6">6. Internationell överföring</h2>
       <p>
         Vissa underleverantörer är etablerade i USA. Överföringar sker med EU-Kommissionens
