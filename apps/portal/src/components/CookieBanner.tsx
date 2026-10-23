@@ -25,7 +25,9 @@ export function CookieBanner() {
       aria-label="Cookies"
       style={{
         position: 'fixed',
-        bottom: 16,
+        // Ovanför portalens bottenmeny när den finns (PortalLayout.module.css
+        // sätter variabeln), annars 16 px från kanten som förut.
+        bottom: 'var(--portal-cookie-bottom, 16px)',
         left: 16,
         right: 16,
         maxWidth: 640,
@@ -35,7 +37,15 @@ export function CookieBanner() {
         border: '1px solid var(--ev-border)',
         borderRadius: 16,
         boxShadow: '0 12px 32px rgba(0,0,0,0.12)',
-        zIndex: 50,
+        // Över bottenmenyn (PortalLayout .tabBar, z-index 100) men under
+        // AI-chatten och nyhets-/felanmälansmodalerna (200+). På 50 täckte
+        // menyn knapparna för en inloggad hyresgäst utan tidigare samtycke, så
+        // att dialogen inte gick att stänga med klick/tap. Med placeringen ovan
+        // överlappar de inte alls; lagret gäller där den inte kan sättas.
+        // Felanmälans bakgrundsdimning (.backdrop, 60) hamnar under dialogen;
+        // själva arket (inline 200) ligger över.
+        // Prov: apps/web/e2e/portal-cookie-banner.spec.ts.
+        zIndex: 150,
       }}
     >
       <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ev-text)' }}>

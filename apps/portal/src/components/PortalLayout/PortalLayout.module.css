@@ -38,6 +38,13 @@
   z-index: 100;
 }
 
+/* Cookie-dialogen (CookieBanner, fixed nederst) ska inte täcka menyn och menyn
+   inte dialogen: när menyn finns läggs dialogen ovanför den, med samma höjd som
+   .main reserverar för menyn. Utan :has-stöd gäller dialogens 16 px och lager. */
+:global(body):has(.tabBar) {
+  --portal-cookie-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
 .tabItem {
   display: flex;
   flex-direction: column;
