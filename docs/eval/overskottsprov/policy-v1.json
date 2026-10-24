@@ -1,0 +1,176 @@
+{
+  "policyVersion": "overskott-v1",
+  "kind": "PREDECLARED_EXPERIMENT_ONLY",
+  "productionImplemented": false,
+  "accountingIntegrated": false,
+  "baselineCommit": "ca29554ae4033b9546d3fb42687a7ad2a8414fdb",
+  "baselineMetric": {
+    "correctAutomatic": 1970,
+    "wrongAutomatic": 0,
+    "reviewPayments": 30
+  },
+  "defaultExpectation": "Original gold allocations and review requirement; overrides below are separate experiment expectations, never input to decisions.",
+  "surplusRule": "Only one explicitly named issued notice, unambiguous organization/tenant/lease identity, all original reference/conflict checks pass, positive integer ore and positive outstanding debt. Allocate at most that notice debt. Preserve remainder in separate credit with organization, tenant, lease, bank event and notice provenance.",
+  "ordinaryPayments": "Keep reference+period policy for ordinary payments including existing partial/combined allocation; never spend or move credit to any notice.",
+  "unsupported": "Paid/cancelled/credited notices, fees/interest, refunds, credit use, reversal and accounting integration require separate policy/integration; no new execution path for these.",
+  "humanReviewRule": "Credit creates a continuing human obligation, even with correct identification and simulated allocation. Human review payments count every originating payment once. Queue placement is not a successful allocation.",
+  "caseRule": "Group pending credits by (organization, tenant), with every bank event retained. Unresolved identity/conflict payments remain individual unresolved cases; do not group by gold owner or claim independent customers.",
+  "expectedNewMetric": {
+    "correctAllocationPayments": 1980,
+    "wrongAllocationPayments": 0,
+    "creditEntries": 10,
+    "creditTotalOre": 25000,
+    "creditOwners": 1,
+    "identityConflicts": 10,
+    "unidentifiedPayments": 10,
+    "allocationReviewPayments": 20,
+    "creditReviewPayments": 10,
+    "humanReviewPayments": 30,
+    "knownCreditCustomerCases": 1,
+    "unresolvedPaymentCases": 20,
+    "reviewWorkItems": 21,
+    "max20HumanReviewPayments": false
+  },
+  "expectedOverrides": {
+    "betalning-57-0": {
+      "allocations": {
+        "avi-57-0": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-1": {
+      "allocations": {
+        "avi-57-1": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-2": {
+      "allocations": {
+        "avi-57-2": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-3": {
+      "allocations": {
+        "avi-57-3": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-4": {
+      "allocations": {
+        "avi-57-4": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-5": {
+      "allocations": {
+        "avi-57-5": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-6": {
+      "allocations": {
+        "avi-57-6": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-7": {
+      "allocations": {
+        "avi-57-7": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-8": {
+      "allocations": {
+        "avi-57-8": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    },
+    "betalning-57-9": {
+      "allocations": {
+        "avi-57-9": 977500
+      },
+      "creditOre": 2500,
+      "creditOwner": {
+        "organization": "syntetisk",
+        "tenant": "57",
+        "lease": "avtal-57"
+      },
+      "humanReviewRequired": true
+    }
+  },
+  "creditPendingDecisions": [
+    "Fastställd kontohantering och beständig ekonomisk redovisning",
+    "Bekräfta ägare och fortsatt hantering av kvarvarande tillgodo",
+    "Separat beslut före återbetalning eller användning mot annan avi"
+  ],
+  "runtimeBoundary": "Only Bank/Notice typed values and stable org-scoped event id enter the policy; never gold, scenario type or overrides. Same public projection as #869 with unique=False; no bank reference variants.",
+  "atomicityBoundary": "Immutable in-memory state staged before one return; injected crash never publishes partial debt/credit state. Stable event id dedup only in memory. No persistence, database locks or real import identity verified.",
+  "negativeControls": [
+    "OCR/notice conflict with other notice open and paid",
+    "same-name tenant collision and parallel-lease ambiguity",
+    "foreign organization and same event id in different organizations",
+    "same event retry/reimport and changed payload collision",
+    "two legitimate different event ids",
+    "partial payment then surplus against remaining debt",
+    "multiple explicit notices and surplus without explicit notice",
+    "ten months retain independent credits",
+    "failure after debt staging and after credit staging before commit",
+    "poisoned gold and scenario fields plus opaque ids",
+    "auditor rejects missing ore, wrong owner/notice, duplicate credit, fake queue success and altered summary"
+  ]
+}
