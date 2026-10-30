@@ -54,7 +54,7 @@ import {
   describeRepair,
   stripThinkingBlocks,
 } from './history-integrity'
-import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import { REMINDER_FEE_MAX_SEK, swedishDateKey } from '@eken/shared'
 import { maskAiContentForDisplay } from '../common/redaction/mask-display'
 import { PENDING_ACTION_TTL_MS } from './pending-action-ttl'
 
@@ -263,6 +263,9 @@ ALDRIG:
 - Ändra lösenord
 - Gissa ID:n — hämta alltid från databas
 - Ge råd som strider mot hyreslagen
+- Hänvisa till menyvägar, knappar, exporter eller funktioner som inte finns i verktygslistan eller underlaget — säg hellre att du inte vet var funktionen finns
+- Presentera aldrig en egen uträkning som en uppgift ur underlaget; räknar du på användarens begäran, visa indata och beräkning
+- Koppla inte en faktura, skuld eller annan post till en fastighet om källan inte anger fastigheten
 
 UNDERHÅLL OCH FELANMÄLNINGAR:
 - Använd get_maintenance_tickets för att visa öppna ärenden
@@ -2123,6 +2126,23 @@ export class AiAssistantService {
   // ── Proactive insights ─────────────────────────────────────────────────────
 
   /**
+   * L1-241 (O1): dagens datum och ISO-vecka för dags-/veckorapporterna, båda räknade på den
+   * SVENSKA kalenderdagen (Europe/Stockholm via swedishDateKey) — inte processens tidszon eller UTC.
+   * Format "Dagens datum: ÅÅÅÅ-MM-DD (vecka V, ÅÅÅÅ)"; veckan enligt ISO 8601 (måndag först,
+   * vecka 1 = den med årets första torsdag, ISO-året kan skilja sig från kalenderåret).
+   */
+  private rapportDatum(now: Date = new Date()): string {
+    const dagNyckel = swedishDateKey(now)
+    const [y, m, dd] = dagNyckel.split('-').map(Number) as [number, number, number]
+    const d = new Date(Date.UTC(y, m - 1, dd))
+    const dag = d.getUTCDay() || 7
+    d.setUTCDate(d.getUTCDate() + 4 - dag)
+    const isoYear = d.getUTCFullYear()
+    const vecka = Math.ceil(((d.getTime() - Date.UTC(isoYear, 0, 1)) / 86_400_000 + 1) / 7)
+    return `Dagens datum: ${dagNyckel} (vecka ${vecka}, ${isoYear})`
+  }
+
+  /**
    * Vilande-org-grind för de automatiska AI-jobben (morgonrapport, vecko- och
    * månadssammanfattning). En org helt utan förvaltningsdata har ingenting att
    * sammanfatta — men cron-jobben itererar ALLA orgar, så utan den här grinden
@@ -2174,7 +2194,8 @@ export class AiAssistantService {
     const response = await this.client.messages.create({
       model: AI_MODELS.ANALYSIS,
       max_tokens: 1024,
-      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
+      // L1-241 (O1): rapporten fick tidigare inget datum (veckorapporten skrev "Vecka 42, 2024").
+      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\n${this.rapportDatum()}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
       messages: [
         {
           role: 'user',
@@ -2205,6 +2226,8 @@ export class AiAssistantService {
             '- Inga generiska floskler ("kolla din portfölj") — bara konkreta actions eller insikter',
             '',
             'Använd portföljdatan som finns i kontexten. Hitta inte på siffror.',
+            // L1-241 (O1): L1-08 räknade fram "saknas ca 930 000 kr" som inte fanns i underlaget.
+            'Räkna inte fram nya belopp, differenser eller prognoser som inte står i portföljdatan.',
           ].join('\n'),
         },
       ],
@@ -2250,7 +2273,8 @@ export class AiAssistantService {
     const response = await this.client.messages.create({
       model: AI_MODELS.ANALYSIS,
       max_tokens: 1280,
-      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
+      // L1-241 (O1): datum och vecka i stället för att modellen gissar år (L1-09: "Vecka 42, 2024").
+      system: `Du är Eveno AI – en intelligent fastighetsassistent för svenska fastighetsförvaltare.\n\n${this.rapportDatum()}\n\nAKTUELL PORTFÖLJDATA:\n${dataCtx}`,
       messages: [
         {
           role: 'user',
@@ -2281,6 +2305,8 @@ export class AiAssistantService {
             '- Inga generiska floskler — bara konkreta actions eller insikter',
             '',
             'Använd portföljdatan som finns i kontexten. Hitta inte på siffror.',
+            // L1-241 (O1): L1-08 räknade fram "saknas ca 930 000 kr" som inte fanns i underlaget.
+            'Räkna inte fram nya belopp, differenser eller prognoser som inte står i portföljdatan.',
           ].join('\n'),
         },
       ],

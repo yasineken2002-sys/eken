@@ -91,6 +91,7 @@ import type { PortalDocumentCategory } from '../../documents/document-delivery.s
 import { ACTION_TOOLS } from './ai-tools.definition'
 import { effectTraceIntegrity } from './effect-idempotency'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
+import { OverdueDebtService } from '../../overdue/overdue-debt.service'
 import { neutralizeUntrusted } from './untrusted-content'
 import {
   PAID_INVOICE_TOTAL_CAVEAT,
@@ -188,6 +189,20 @@ export interface ToolResult {
   data?: unknown
   message: string
   /**
+   * L1-241 (P1): vilken mängd `data` omfattar när den INTE är hela den operativa skulden.
+   * `get_overdue_invoices`/`get_overdue_status` listar bara fakturor; hyresavier ingår inte.
+   */
+  omfattning?: 'ENDAST_FAKTUROR'
+  /**
+   * L1-241 (P1): den operativa förfallna skulden (hyresavier + fakturor) ur den DELADE
+   * sanningskällan OverdueDebtService — samma tal som datakontextens "Förfallen skuld".
+   * Kunde snapshoten inte läsas står här reportFailure('READ_FAILED') — en maskinläsbar teknisk
+   * felsignal, aldrig en total 0; listan i `data` levereras oförändrad.
+   */
+  operativTotal?:
+    | { total: number; count: number; omfattning: 'HYRESAVIER_OCH_FAKTUROR'; källa: 'OverdueDebtService' }
+    | ReturnType<typeof reportFailure>
+  /**
    * DET EXTERNA HANDTAGET — köns job-id, providerns request-id, en objektnyckel.
    *
    * Typat fält i stället för ett magiskt fält i `data`: exekveraren ska inte
@@ -207,6 +222,31 @@ export interface ToolResult {
 
 function formatAmount(n: number): string {
   return n.toLocaleString('sv-SE')
+}
+
+/**
+ * L1-241 (P1): operativ förfallen skuld (hyresavier + fakturor) ur OverdueDebtService.
+ * Tjänsten beror ENDAST på PrismaService (overdue-debt.service.ts: `constructor(private readonly
+ * prisma: PrismaService)`), så den instansieras här med samma org-scopade prisma i stället för en
+ * ny konstruktorparameter — ToolExecutorService-ariteten (26) och alla specars positionella
+ * argument är oförändrade. Ingen ny skuldformel: exakt samma beräkning som datakontexten.
+ */
+async function operativFörfallenSkuld(
+  prisma: PrismaService,
+  organizationId: string,
+  now: Date,
+): Promise<{ värde: NonNullable<ToolResult['operativTotal']>; text: string }> {
+  try {
+    const s = await new OverdueDebtService(prisma).getOverdueSnapshot(organizationId, now)
+    return {
+      värde: { total: s.total, count: s.count, omfattning: 'HYRESAVIER_OCH_FAKTUROR', källa: 'OverdueDebtService' },
+      text: `Total förfallen operativ skuld (hyresavier + fakturor, ${s.count} poster): ${formatAmount(s.total)} kr.`,
+    }
+  } catch {
+    // Saknad total är inte 0: listan levereras ändå, totalen anges uttryckligen som okänd och
+    // felet bärs strukturerat (REPORT_NOT_DETERMINABLE/READ_FAILED) så att det kan upptäckas.
+    return { värde: reportFailure('READ_FAILED'), text: 'Total förfallen operativ skuld (hyresavier + fakturor) kunde inte läsas — ange den inte.' }
+  }
 }
 
 function parseSwedishAmount(input: unknown): number | null {
@@ -1076,10 +1116,19 @@ export class ToolExecutorService {
             ...inv,
             outstanding: invoiceOutstanding(inv),
           }))
+          // L1-241 (P1): listan är bara FAKTUROR. Modellen tog fakturornas restskuld (4 500) som
+          // "total förfallen skuld" fast den delade sanningskällan sa 9 500/8 000. `data` är
+          // oförändrad; omfattningen och den operativa totalen följer med som egna fält.
+          const operativ = await operativFörfallenSkuld(this.prisma, organizationId, new Date())
+          const fakturaRest = withDebt.reduce((s, inv) => s + inv.outstanding, 0)
           return {
             success: true,
             data: withDebt,
-            message: `${withDebt.length} förfallna fakturor hittades`,
+            omfattning: 'ENDAST_FAKTUROR',
+            operativTotal: operativ.värde,
+            message:
+              `${withDebt.length} förfallna fakturor hittades (restskuld ${formatAmount(fakturaRest)} kr). ` +
+              `Endast fakturor — hyresavier ingår inte. ${operativ.text}`,
           }
         }
 
@@ -1193,6 +1242,43 @@ export class ToolExecutorService {
           // Nyckeln heter totalRevenue av kompatibilitetsskäl; måttet står i `measure`.
           const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.total), 0)
 
+          // L1-241 (P2): modellen svarade "månadens intäkt: 0 kr" ur betalda fakturor fast den
+          // bokförda intäkten var 120 000. Bokförd intäkt för SAMMA period följer nu med, ur exakt
+          // samma källa och huvudboksgrind som get_profit_loss_report (getProfitLossReport,
+          // assertEvenoReport). Grindens nekande blir ett uttryckligt avstående; ett tekniskt
+          // läsfel blir READ_FAILED — aldrig 0, aldrig lokal fallback.
+          let bokfordIntakt:
+            | { status: 'KNOWN'; belopp: number; källa: string; period: { from: string; to: string } }
+            | ReturnType<typeof reportFailure>
+          try {
+            const pl = await this.accountingService.getProfitLossReport(
+              organizationId,
+              period.from,
+              period.to,
+            )
+            bokfordIntakt = {
+              status: 'KNOWN',
+              belopp: pl.revenue.total,
+              källa: 'Evenos huvudbok, resultaträkning (3xxx), samma som get_profit_loss_report',
+              period: { from: period.from, to: period.to },
+            }
+          } catch (error) {
+            const body = error instanceof ConflictException ? error.getResponse() : null
+            bokfordIntakt =
+              body &&
+              typeof body === 'object' &&
+              'code' in body &&
+              body.code === REPORT_NOT_DETERMINABLE &&
+              'reason' in body &&
+              isReportReason(body.reason)
+                ? reportFailure(body.reason)
+                : reportFailure('READ_FAILED')
+          }
+          const bokfordText =
+            bokfordIntakt.status === 'KNOWN'
+              ? `Bokförd intäkt ${period.from}–${period.to}: ${formatAmount(bokfordIntakt.belopp)} kr (${bokfordIntakt.källa}).`
+              : `Bokförd intäkt ${period.from}–${period.to}: ${bokfordIntakt.message}`
+
           return {
             success: true,
             data: {
@@ -1202,8 +1288,11 @@ export class ToolExecutorService {
                 .map(([month, amount]) => ({ month, amount })),
               measure: PAID_INVOICE_TOTAL_MEASURE,
               period,
+              bokfordIntakt,
             },
-            message: `Betalda fakturors total ${period.from}–${period.to} (hela svenska kalenderdagar, båda inkluderade): ${totalRevenue.toFixed(2)} SEK. ${PAID_INVOICE_TOTAL_CAVEAT}`,
+            message:
+              `OBS: betalda fakturors total är INTE bokförd intäkt. ${bokfordText} ` +
+              `Betalda fakturors total ${period.from}–${period.to} (hela svenska kalenderdagar, båda inkluderade): ${totalRevenue.toFixed(2)} SEK. ${PAID_INVOICE_TOTAL_CAVEAT}`,
           }
         }
 
@@ -3993,6 +4082,9 @@ export class ToolExecutorService {
             lines.push(
               `- [${n.noticeNumber}] ${name} — OCR: ${n.ocrNumber}, ` +
                 `${Number(n.totalAmount).toLocaleString('sv-SE')} kr, ` +
+                // L1-241 (P1b): bruttot är inte skulden. `payableTotal` är samma restskuld som
+                // portalen och OverdueDebtService räknar (rentNoticeOutstanding).
+                `kvar att betala ${Number(n.payableTotal).toLocaleString('sv-SE')} kr, ` +
                 `Förfaller: ${swedishDateKey(new Date(n.dueDate))}, ` +
                 `Status: ${translateNoticeStatus(n.status)}`,
             )
@@ -4783,13 +4875,20 @@ export class ToolExecutorService {
             sentToCollection: status.filter((s) => s.status === 'SENT_TO_COLLECTION').length,
             pausedCount: status.filter((s) => s.remindersPaused).length,
           }
+          // L1-241 (P1): påminnelseflödet omfattar bara FAKTUROR. "Inga förfallna fakturor" fick
+          // inte läsas som "ingen förfallen skuld" när hyresavier är förfallna.
+          const operativ = await operativFörfallenSkuld(this.prisma, organizationId, new Date())
+          const omfattningText = ` Endast fakturor — hyresavier ingår inte. ${operativ.text}`
           return {
             success: true,
             data: { summary, invoices: status },
+            omfattning: 'ENDAST_FAKTUROR',
+            operativTotal: operativ.värde,
             message:
-              status.length === 0
-                ? 'Inga förfallna fakturor — bra jobbat!'
-                : `${summary.inProgress} pågående påminnelser, ${summary.readyForCollection} redo för inkasso, ${summary.sentToCollection} skickade till inkasso`,
+              (status.length === 0
+                ? 'Inga förfallna fakturor i påminnelseflödet.'
+                : `${summary.inProgress} pågående påminnelser, ${summary.readyForCollection} redo för inkasso, ${summary.sentToCollection} skickade till inkasso.`) +
+              omfattningText,
           }
         }
 
