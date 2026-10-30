@@ -1467,7 +1467,7 @@ jobs:
   # #405 för varför en uppräkning ändå valdes framför alternativen.
   e2e:
     name: E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Riggen är ~1 min (postgres 2 s, migrate 8 s, API-boot 43 s, web 3 s) och
     # varje spec ~13 s varm. Åtta specar ≈ 2,5 min; taket täcker install + cache-miss.
     timeout-minutes: 25
