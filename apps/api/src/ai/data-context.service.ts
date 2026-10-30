@@ -422,7 +422,9 @@ export class DataContextService {
       }
       if (propertyCount > propertyList.length) {
         lines.push(
-          `  ... och ${propertyCount - propertyList.length} till (listan är ett urval: ${propertyList.length} av ${propertyCount} fastigheter)`,
+          // L1-241 (AF20): modellen hittade på "P-21" för en fastighet som inte listades. Raden
+          // säger nu uttryckligen att övriga namn/ID saknas här och var de hämtas.
+          `  ... och ${propertyCount - propertyList.length} till (listan är ett urval: ${propertyList.length} av ${propertyCount} fastigheter; namn och ID för övriga visas inte här — hämta dem med get_properties och gissa aldrig ett fastighets-ID)`,
         )
       }
     }

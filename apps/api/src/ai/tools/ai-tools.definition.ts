@@ -44,7 +44,8 @@ export const TOOLS: Anthropic.Tool[] = [
 
   {
     name: 'get_overdue_invoices',
-    description: 'Hämtar alla förfallna fakturor med hyresgästinformation.',
+    description:
+      'Hämtar förfallna FAKTUROR med hyresgästinformation och restskuld (outstanding). Omfattar endast fakturor — hyresavier ingår inte, så summan är en delmängd. Den totala förfallna operativa skulden (hyresavier + fakturor) står i svarets operativTotal och är samma tal som översiktens "Förfallen skuld".',
     input_schema: {
       type: 'object',
       properties: {},
@@ -105,7 +106,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_revenue_report',
     description:
-      'Hämtar betalda fakturors total för en period, per månad. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan fick status Betald. Det omfattar INTE hyresavier eller deras delbetalningar, är INTE bokförd intäkt eller företagets fulla intäkt, och är INTE verifierad bankinbetalning (status Betald kan sättas manuellt utan bankunderlag) — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda räknas med.',
+      'Hämtar betalda fakturors total för en period, per månad. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan fick status Betald. Det omfattar INTE hyresavier eller deras delbetalningar, är INTE bokförd intäkt eller företagets fulla intäkt, och är INTE verifierad bankinbetalning (status Betald kan sättas manuellt utan bankunderlag) — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report); svaret bär också bokfordIntakt för samma period ur resultaträkningen, eller ett uttryckligt avstående när den inte kan fastställas. Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda räknas med.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1042,7 +1043,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_overdue_status',
     description:
-      'Översikt över alla förfallna fakturor och deras påminnelse-status: hur många dagar förfallna, vilka påminnelser som skickats, om reminders är pausade, om fakturan är skickad till inkasso.',
+      'Översikt över förfallna FAKTUROR och deras påminnelse-status: hur många dagar förfallna, vilka påminnelser som skickats, om reminders är pausade, om fakturan är skickad till inkasso. Omfattar endast fakturor — hyresavier ingår inte; den totala förfallna operativa skulden (hyresavier + fakturor) står i svarets operativTotal.',
     input_schema: {
       type: 'object',
       properties: {},
